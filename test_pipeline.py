@@ -9,8 +9,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
-# Add the data_pipeline directory to Python path
-sys.path.append(str(Path(__file__).parent))
+# Add the data_pipeline directory to Python path  
+data_pipeline_path = str(Path(__file__).parent / 'data_pipeline')
+sys.path.append(data_pipeline_path)
 
 from config import DataConfig, APIConfig, validate_config, get_date_range_from_env, get_bbox_from_env
 from fetch_tempo import TEMPOFetcher

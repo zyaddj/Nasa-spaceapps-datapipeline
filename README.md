@@ -20,7 +20,7 @@ time,PM2.5,PM10,O3,NO2,SO2,CO,temperature,humidity,wind_speed
 ## 📁 Repository Structure
 
 ```
-/dustiq
+/nasa-ting
   /backend                 # FastAPI server
     api.py                 # API endpoints (/forecast, /latest, /health)
     model_train.py         # ConvLSTM model training
@@ -56,7 +56,7 @@ time,PM2.5,PM10,O3,NO2,SO2,CO,temperature,humidity,wind_speed
 ### 1. Clone and Setup
 ```bash
 git clone <your-repo-url>
-cd dustiq
+cd nasa-ting
 pip install -r backend/requirements.txt
 ```
 

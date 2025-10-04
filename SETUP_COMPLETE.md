@@ -6,7 +6,7 @@ Your complete DustIQ repository is ready for collaborative development:
 
 ### 📁 **Repository Structure**
 ```
-dustiq/
+nasa-ting/
 ├── README.md                 # Project overview & quick start
 ├── API_SETUP.md             # Detailed API credentials guide
 ├── .gitignore               # Protects sensitive data
@@ -77,7 +77,7 @@ python fetch_tempo.py     # Then satellite data
 ```bash
 # 1. Clone repo
 git clone <your-repo-url>
-cd dustiq
+cd nasa-ting
 
 # 2. Install dependencies
 pip install -r backend/requirements.txt
