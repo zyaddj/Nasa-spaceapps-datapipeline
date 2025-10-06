@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
-from config import DataConfig, APIConfig
+from .config import DataConfig, APIConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -63,14 +63,47 @@ class TEMPOFetcher:
         logger.info(f"   Bounding box: {bbox}")
         
         try:
-            # Search for granules
+            # Search for granules - earthaccess expects (west, south, east, north)
             results = earthaccess.search_data(
                 short_name=collection_name,
                 temporal=(start_date, end_date),
-                bounding_box=bbox
+                bounding_box=(bbox[0], bbox[1], bbox[2], bbox[3])  # Convert list to tuple
             )
             
-            logger.info(f"Found {len(results)} TEMPO {variable} granules")
+            logger.info(f"Found {len(results)} TEMPO {variable} granules (pre-filter)")
+
+            # Deduplicate to max one granule per hour across full date range
+            # Filename contains pattern ..._YYYYMMDDTHHMMSSZ_...
+            import re
+            hourly_selected = []
+            seen = set()
+            pattern = re.compile(r"_(\d{8})T(\d{2})\d{4}Z_")
+            for granule in results:
+                try:
+                    fname = os.path.basename(granule.data_link()) if hasattr(granule, 'data_link') else str(granule)
+                    m = pattern.search(fname)
+                    if m:
+                        date_part, hour_part = m.group(1), m.group(2)
+                        key = f"{date_part}{hour_part}"
+                    else:
+                        # Fallback: just keep if pattern missing
+                        key = fname
+                    if key not in seen:
+                        seen.add(key)
+                        hourly_selected.append(granule)
+                    if len(hourly_selected) >= 24 * 8:  # safety upper bound (8 days)
+                        break
+                except Exception:
+                    hourly_selected.append(granule)
+
+            if hourly_selected:
+                logger.info(f"   Reduced to {len(hourly_selected)} granules after hourly filtering")
+                results = hourly_selected
+
+            MAX_GRANULES = 170
+            if len(results) > MAX_GRANULES:
+                logger.info(f"   Capping granules {len(results)} → {MAX_GRANULES}")
+                results = results[:MAX_GRANULES]
             
             if not results:
                 logger.warning(f"No TEMPO {variable} data found for specified period")
@@ -91,7 +124,7 @@ class TEMPOFetcher:
             # Filter successful downloads
             valid_files = [str(f) for f in downloaded_files if f and os.path.exists(f)]
             
-            logger.info(f"✅ Downloaded {len(valid_files)} TEMPO {variable} files")
+            logger.info(f"✅ Downloaded {len(valid_files)} TEMPO {variable} files (post-filter)")
             return valid_files
             
         except Exception as e:

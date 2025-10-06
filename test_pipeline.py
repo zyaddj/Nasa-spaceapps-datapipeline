@@ -1,6 +1,7 @@
 """
-Complete DustIQ Data Pipeline Test
-Tests all components: TEMPO, VIIRS, Weather, OpenAQ, and Data Unification
+NASA TEMPO + OpenAQ Data Retrieval Pipeline - Complete System Test
+Tests all pipeline components: TEMPO satellite data, OpenAQ ground stations, 
+meteorological data, and multi-source data unification
 """
 
 import os
@@ -9,14 +10,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
-# Add the data_pipeline directory to Python path  
-data_pipeline_path = str(Path(__file__).parent / 'data_pipeline')
-sys.path.append(data_pipeline_path)
-
-from config import DataConfig, APIConfig, validate_config, get_date_range_from_env, get_bbox_from_env
-from fetch_tempo import TEMPOFetcher
-from fetch_openaq import OpenAQFetcher
-from data_unifier import DustIQDataUnifier
+# Import from data_pipeline module
+from data_pipeline.config import DataConfig, APIConfig, validate_config, get_date_range_from_env, get_bbox_from_env
+from data_pipeline.fetch_tempo import TEMPOFetcher
+from data_pipeline.fetch_openaq import OpenAQFetcher
+from data_pipeline.data_unifier import DustIQDataUnifier
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

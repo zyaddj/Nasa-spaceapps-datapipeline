@@ -1,9 +1,18 @@
-# Configuration settings for DustIQ data pipeline
+# Configuration settings for NASA TEMPO + OpenAQ Data Retrieval Pipeline
+# Combines NASA's TEMPO satellite observations with OpenAQ ground monitoring
+# to create comprehensive air quality datasets for North America
 
 import os
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 from datetime import datetime, timedelta
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file in project root
+root_dir = Path(__file__).parent.parent  # Go up one level from data_pipeline to root
+env_path = root_dir / '.env'
+load_dotenv(env_path)
 
 @dataclass
 class DataConfig:
@@ -58,7 +67,8 @@ class APIConfig:
     LAADS_BASE_URL: str = "https://ladsweb.modaps.eosdis.nasa.gov/archive/allData/5200"
     
     # OpenAQ
-    OPENAQ_BASE_URL: str = "https://api.openaq.org/v2"
+    OPENAQ_BASE_URL: str = "https://api.openaq.org/v3"  # Updated to v3
+    OPENAQ_API_KEY: str = os.getenv('OPENAQ_API_KEY', '')
     OPENAQ_RATE_LIMIT: float = 1.0  # seconds between requests
     
     # File paths
@@ -105,10 +115,12 @@ if __name__ == "__main__":
     config = DataConfig()
     api_config = APIConfig()
     
-    print("📊 DustIQ Configuration:")
+    print("�️ NASA TEMPO + OpenAQ Pipeline Configuration:")
     print(f"   Bounding box: {config.BBOX}")
     print(f"   Grid resolution: {config.GRID_RESOLUTION}°")
     print(f"   Date range: {get_date_range_from_env()}")
     print(f"   Target columns: {len(config.TARGET_COLUMNS)} variables")
+    print(f"   TEMPO pollutants: {list(config.TEMPO_COLLECTIONS.keys())}")
+    print(f"   OpenAQ parameters: {config.OPENAQ_PARAMETERS}")
     
     validate_config()

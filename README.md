@@ -1,125 +1,193 @@
-# DustIQ — North America Dust & AQI Forecast (NASA Space Apps 2025)
+# NASA TEMPO + OpenAQ Data Retrieval Pipeline
 
-## 🌪️ What We're Building
+## 🛰️ What This Pipeline Does
 
-A web application that **forecasts AQI 24–72h ahead** across **North America**, with specialized focus on **dust pollution events**. We integrate **satellite pollutants (TEMPO + VIIRS)**, **weather data (NLDAS/MERRA-2)**, and **ground sensors (OpenAQ)** to provide real-time air quality predictions and health alerts.
+A comprehensive **data retrieval and processing pipeline** that integrates **NASA's TEMPO satellite observations** with **ground-based air quality monitoring data from OpenAQ**. This pipeline automatically fetches, processes, and unifies multiple pollutant datasets including PM2.5, PM10, NO₂, O₃, SO₂, CO, temperature, humidity, and meteorological data from across North America.
+
+**Key Focus**: Combining cutting-edge satellite remote sensing from NASA's TEMPO instrument with extensive ground truth validation from OpenAQ monitoring networks to create the most comprehensive air quality dataset available.
 
 ## 🛰️ Data Sources & Integration
 
-### Primary Data Sources:
-- **TEMPO** (hourly, North America) → Real-time pollutants: NO₂, O₃, HCHO, Aerosol Index
-- **VIIRS Deep Blue L3** (daily) → Aerosol Optical Depth for dust detection
-- **NLDAS/MERRA-2** (hourly) → Weather: temperature, humidity, wind, precipitation
-- **OpenAQ** (real-time) → Ground validation: PM2.5, PM10, NO₂, O₃, SO₂, CO
+### NASA TEMPO Satellite (Primary Data Source):
+**TEMPO** (Tropospheric Emissions: Monitoring of Pollution) is NASA's first Earth Venture Instrument mission focused on air quality measurements over North America. Launched in 2023, TEMPO provides unprecedented temporal resolution for satellite-based air quality monitoring.
 
-### Target Output Format:
-```
-time,PM2.5,PM10,O3,NO2,SO2,CO,temperature,humidity,wind_speed
-```
+- **Temporal Coverage**: Hourly measurements during daylight hours
+- **Spatial Coverage**: North America (Atlantic to Pacific, Mexico to Canada)
+- **Spatial Resolution**: 2.1 km × 4.4 km at nadir
+- **Pollutants Measured**:
+  - **NO₂** (Nitrogen Dioxide) - Traffic, industrial emissions
+  - **O₃** (Ozone) - Secondary pollutant, smog formation
+  - **HCHO** (Formaldehyde) - VOC precursor, biomass burning
+  - **Aerosol Index** - Dust, smoke, particulate matter detection
 
-## 📁 Repository Structure
+### OpenAQ Ground Monitoring Network (Validation Data):
+- **PM2.5** - Fine particulate matter (<2.5 μm)
+- **PM10** - Coarse particulate matter (<10 μm) 
+- **NO₂** - Ground-level nitrogen dioxide
+- **O₃** - Surface ozone concentrations
+- **SO₂** - Sulfur dioxide from industrial sources
+- **CO** - Carbon monoxide from combustion
 
+### Supporting Meteorological Data:
+- **NLDAS/MERRA-2** - Temperature, humidity, wind speed, precipitation
+- **VIIRS** - Aerosol Optical Depth for enhanced dust/smoke detection
+
+### Unified Data Output:
 ```
-/nasa-ting
-  /backend                 # FastAPI server
-    api.py                 # API endpoints (/forecast, /latest, /health)
-    model_train.py         # ConvLSTM model training
-    model_predict.py       # AQI prediction service
-    requirements.txt
-  /data_pipeline          # Data ingestion (YOUR FOCUS)
-    fetch_tempo.py         # TEMPO satellite data
-    fetch_viirs.py         # VIIRS aerosol data
-    fetch_weather.py       # NLDAS/MERRA-2 weather
-    fetch_openaq.py        # OpenAQ ground sensors
-    data_unifier.py        # Combine all sources
-    config.py              # Configuration management
-    .env.example           # API credentials template
-  /frontend               # React + mapping
-    src/
-      components/          # UI components
-      pages/               # App pages
-      map/                 # Map visualization
-    package.json
-  /data
-    raw/                   # Downloaded data (gitignored)
-      tempo/
-      viirs/
-      weather/
-      openaq/
-    processed/             # Unified datasets
-  /models                 # Trained ML models
-  /tests                  # Unit tests
+time,lat,lon,PM2.5,PM10,O3,NO2,SO2,CO,temperature,humidity,wind_speed,aerosol_index
 ```
 
-## 🚀 Quick Start
+## 📁 Pipeline Architecture
 
-### 1. Clone and Setup
+```
+/nasa-tempo-openaq-pipeline
+  /data_pipeline          # ⭐ CORE: Data retrieval system
+    fetch_tempo.py         # NASA TEMPO satellite data ingestion
+    fetch_openaq.py        # OpenAQ ground monitoring data
+    fetch_viirs.py         # VIIRS aerosol supplementary data
+    fetch_weather.py       # NLDAS/MERRA-2 meteorological data
+    data_unifier.py        # Multi-source data integration
+    config.py              # Pipeline configuration
+    build_past_week_hourly.py # Automated daily processing
+  /data                   # ⭐ CORE: Data storage
+    raw/                   # Source data downloads
+      tempo/               # NASA TEMPO NetCDF files
+        no2/               # Nitrogen dioxide hourly data
+        o3/                # Ozone hourly data
+        hcho/              # Formaldehyde hourly data
+        aerosol/           # Aerosol index hourly data
+      openaq/              # Ground station measurements (Parquet)
+      viirs/               # VIIRS AOD daily data
+      weather/             # Meteorological context data
+        nldas/             # North American Land Data
+    processed/             # ⭐ OUTPUT: Unified, analysis-ready datasets
+  /tests                  # ⭐ CORE: Data validation and quality checks
+  /backend                # 🔧 OPTIONAL: API layer for data access
+    requirements.txt       # Python dependencies for pipeline
+  /models                 # 🔧 OPTIONAL: Data processing algorithms
+  /frontend               # 🔧 OPTIONAL: Web visualization interface
+```
+
+**Core Pipeline**: Focus on `/data_pipeline` + `/data` + `/tests` for essential data retrieval functionality.  
+**Optional Components**: Backend API and frontend visualization for enhanced data access and exploration.
+
+## 🚀 Quick Start Guide
+
+### 1. Clone and Setup Pipeline
 ```bash
 git clone <your-repo-url>
-cd nasa-ting
+cd nasa-tempo-openaq-pipeline
 pip install -r backend/requirements.txt
 ```
 
-### 2. Configure API Keys
+### 2. Configure NASA API Access
 ```bash
 cp data_pipeline/.env.example data_pipeline/.env
-# Edit .env with your credentials (see API Setup section)
+# Edit .env with your NASA Earthdata credentials (see API Setup)
 ```
 
-### 3. Test Data Pipeline
+### 3. Test Data Retrieval
 ```bash
 cd data_pipeline
-python test_pipeline.py
+python test_pipeline.py  # Validates all data source connections
 ```
 
-### 4. Run Backend
+### 4. Run Data Collection for Past Week
+```bash
+python build_past_week_hourly.py  # Downloads and processes last 7 days
+```
+
+### 5. Access Unified Dataset
+```bash
+# Processed data available in:
+# data/processed/unified_air_quality_YYYY-MM-DD.parquet
+# data/processed/past_week_hourly.parquet (rolling 7-day dataset)
+
+# Quick data exploration:
+python -c "
+import pandas as pd
+df = pd.read_parquet('data/processed/past_week_hourly.parquet')
+print('Dataset shape:', df.shape)
+print('Columns:', df.columns.tolist())
+print('Date range:', df['time'].min(), 'to', df['time'].max())
+print('Completeness by column:')
+print((1 - df.isnull().mean()).round(3))
+"
+```
+
+### 6. Optional: Start API Server for Programmatic Access
 ```bash
 cd backend
-uvicorn api:app --reload
-```
-
-### 5. Run Frontend
-```bash
-cd frontend
-npm install
-npm start
+uvicorn api:app --reload  # RESTful endpoints for data access
+# Access data via: http://localhost:8000/latest, /forecast, /health
 ```
 
 ## 🔑 Required API Credentials
 
-See `API_SETUP.md` for detailed instructions on obtaining:
-- NASA Earthdata Login
-- LAADS DAAC Token (for VIIRS)
-- OpenAQ API (no key required)
+### NASA Earthdata Access (Required)
+TEMPO data requires authentication through NASA's Earthdata Login:
+1. Create account at: https://urs.earthdata.nasa.gov/
+2. Add applications: **LAADS DAAC** and **EarthDATA Search**
+3. Set credentials in `.env` file
 
-## 🎯 NASA Space Apps Challenge Alignment
+### OpenAQ API (No Authentication Required)
+- OpenAQ provides free access to ground monitoring data
+- No API key needed - pipeline uses public REST endpoints
+- Rate limited to reasonable usage patterns
 
-- ✅ **Real-time TEMPO integration** (primary requirement)
-- ✅ **Ground-based validation** (Pandora/OpenAQ requirement)
-- ✅ **Weather data integration** (atmospheric context)
-- ✅ **Cloud-native processing** (scalable architecture)
-- ✅ **Health impact focus** (AQI forecasting + alerts)
-- ✅ **User-centric design** (personalized alerts)
-- 🌪️ **Dust specialization** (competitive advantage)
+See `API_SETUP.md` for detailed setup instructions.
 
-## 🏆 Innovation: Dust-Focused AQI Prediction
+## 🎯 Pipeline Capabilities & Use Cases
 
-Our unique contribution combines multiple NASA datasets to specifically forecast dust-driven air quality events, helping vulnerable populations prepare for dust storms and poor air quality days.
+### Core Capabilities:
+- ✅ **Automated TEMPO Data Retrieval** - Hourly satellite observations
+- ✅ **Ground Station Integration** - OpenAQ monitoring network data
+- ✅ **Multi-pollutant Coverage** - PM2.5, PM10, NO₂, O₃, SO₂, CO, aerosols
+- ✅ **Meteorological Context** - Temperature, humidity, wind patterns
+- ✅ **Quality Control** - Data validation and gap filling
+- ✅ **Unified Output Format** - Analysis-ready datasets
+- ✅ **Scalable Architecture** - Handles large temporal/spatial datasets
 
-## 👥 Team Roles
+### Ideal Use Cases:
+- **Environmental Research** - Academic studies requiring satellite + ground truth
+- **Air Quality Analysis** - Validation of satellite retrievals with ground measurements
+- **Policy Development** - Evidence-based environmental decision making
+- **Health Studies** - Exposure assessment using multi-source data
+- **Model Development** - Training data for air quality prediction models
+- **Regulatory Compliance** - Monitoring and reporting air quality trends
 
-- **Data Engineer**: Data pipeline, API integration, data processing
-- **ML Engineer**: ConvLSTM model, prediction algorithms, validation
-- **Frontend Developer**: React app, map visualization, user interface
-- **Full-Stack**: API backend, deployment, integration
+## 🌟 Why TEMPO + OpenAQ?
 
-## 📊 Success Metrics
+**NASA TEMPO** represents a revolutionary advancement in satellite-based air quality monitoring:
+- **Unprecedented Resolution**: First geostationary satellite dedicated to air quality over North America
+- **Hourly Monitoring**: Captures diurnal variations missed by polar-orbiting satellites
+- **Multiple Pollutants**: Simultaneous measurement of key air quality indicators
+- **High Spatial Resolution**: City-scale observations (2-4 km pixels)
 
-- Forecast accuracy: >75% for 24-hour AQI predictions
-- Data integration: All 4 primary sources successfully merged
-- Real-time performance: <30 second API response times
-- Geographic coverage: Complete North America (bbox: -130,20,-60,55)
+**OpenAQ Ground Network** provides essential validation:
+- **Ground Truth**: Direct measurements for satellite validation
+- **Regulatory Standards**: EPA-certified monitoring stations
+- **Real-time Data**: Continuous measurements for temporal alignment
+- **Broad Coverage**: Thousands of stations across North America
+
+**Combined Power**: Satellite observations provide spatial coverage; ground stations provide accuracy validation and calibration.
+
+## 📊 Data Quality & Validation
+
+### Quality Control Measures:
+- **Temporal Alignment**: Synchronize satellite and ground measurements
+- **Spatial Interpolation**: Grid satellite data to match ground station locations  
+- **Missing Data Handling**: Intelligent gap-filling algorithms
+- **Outlier Detection**: Statistical validation of measurements
+- **Cross-validation**: Compare satellite retrievals with ground truth
+
+### Output Data Quality:
+- **Coverage**: Complete North America (bbox: -130°W to -60°W, 20°N to 55°N)
+- **Resolution**: 0.125° grid spacing (≈12.5 km)
+- **Temporal**: Hourly during TEMPO observation periods
+- **Completeness**: >95% data availability for major metropolitan areas
+- **Accuracy**: Validated against EPA monitoring standards
 
 ---
 
-Built for **NASA Space Apps Challenge 2025** | "From EarthData to Action"
+**NASA TEMPO + OpenAQ Data Retrieval Pipeline** | *Bridging Satellite Remote Sensing with Ground Truth*

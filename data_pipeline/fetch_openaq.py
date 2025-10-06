@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import logging
 
-from config import DataConfig, APIConfig
+from .config import DataConfig, APIConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +27,7 @@ class OpenAQFetcher:
         
     def fetch_measurements(self, start_date: str, end_date: str, bbox: List[float]) -> Optional[str]:
         """
-        Fetch OpenAQ measurements for all parameters
+        Fetch OpenAQ measurements using v3 sensor-based approach
         
         Args:
             start_date: Start date (YYYY-MM-DD)
@@ -38,102 +38,161 @@ class OpenAQFetcher:
             Path to saved Parquet file, or None if failed
         """
         
-        logger.info("🏭 Fetching OpenAQ ground measurements")
+        logger.info("🏭 Fetching OpenAQ ground measurements (v3 sensor approach)")
         logger.info(f"   Date range: {start_date} to {end_date}")
         logger.info(f"   Bounding box: {bbox}")
-        logger.info(f"   Parameters: {self.config.OPENAQ_PARAMETERS}")
         
+        # Step 1: Find locations in bounding box
+        locations = self._fetch_locations_in_bbox(bbox)
+        if not locations:
+            logger.warning("⚠️ No OpenAQ locations found in bounding box")
+            return None
+        
+        logger.info(f"   Found {len(locations)} locations")
+        
+        # Step 2: Extract sensors and fetch hourly data
         all_measurements = []
-        
-        for parameter in self.config.OPENAQ_PARAMETERS:
-            logger.info(f"  📊 Fetching {parameter.upper()} measurements...")
-            
-            try:
-                measurements = self._fetch_parameter_data(parameter, start_date, end_date, bbox)
-                all_measurements.extend(measurements)
-                
-                # Rate limiting
-                time.sleep(self.api_config.OPENAQ_RATE_LIMIT)
-                
-                logger.info(f"     Retrieved {len(measurements)} {parameter} measurements")
-                
-            except Exception as e:
-                logger.error(f"❌ Error fetching {parameter}: {e}")
+        for location in locations:
+            location_measurements = self._fetch_location_sensors_data(location, start_date, end_date)
+            all_measurements.extend(location_measurements)
+            time.sleep(self.api_config.OPENAQ_RATE_LIMIT)
         
         if not all_measurements:
             logger.warning("⚠️ No OpenAQ measurements retrieved")
             return None
         
+        logger.info(f"   Retrieved {len(all_measurements)} total measurements")
+        
         # Process and save data
         return self._process_and_save(all_measurements, start_date, end_date)
     
-    def _fetch_parameter_data(self, parameter: str, start_date: str, end_date: str, bbox: List[float]) -> List[Dict]:
-        """Fetch measurements for a specific parameter"""
+    def _fetch_locations_in_bbox(self, bbox: List[float]) -> List[Dict]:
+        """Fetch locations within bounding box using v3 API"""
         
-        measurements = []
-        page = 1
-        limit = 10000
-        max_pages = 10  # Prevent infinite loops
-        
-        while page <= max_pages:
+        try:
             params = {
-                'date_from': start_date,
-                'date_to': end_date,
-                'parameter': parameter,
-                'coordinates': f"{bbox[1]},{bbox[0]},{bbox[3]},{bbox[2]}",  # S,W,N,E format
-                'limit': limit,
-                'page': page,
-                'sort': 'desc',
-                'order_by': 'datetime'
+                'bbox': f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",  # west,south,east,north
+                'limit': 100,  # Get more locations
+                'page': 1
             }
             
+            headers = {'X-API-Key': self.api_config.OPENAQ_API_KEY} if self.api_config.OPENAQ_API_KEY else {}
+            
+            response = requests.get(
+                f"{self.api_config.OPENAQ_BASE_URL}/locations",
+                params=params,
+                headers=headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            locations = data.get('results', [])
+            
+            # Filter for locations with sensors we want
+            target_params = set(self.config.OPENAQ_PARAMETERS)
+            filtered_locations = []
+            
+            for location in locations:
+                sensors = location.get('sensors', [])
+                location_params = set()
+                for sensor in sensors:
+                    param_name = sensor.get('parameter', {}).get('name', '')
+                    if param_name in target_params:
+                        location_params.add(param_name)
+                
+                if location_params:  # Has at least one parameter we want
+                    location['target_sensors'] = [
+                        s for s in sensors 
+                        if s.get('parameter', {}).get('name', '') in target_params
+                    ]
+                    filtered_locations.append(location)
+            
+            logger.info(f"   Filtered to {len(filtered_locations)} locations with target parameters")
+            return filtered_locations
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching locations: {e}")
+            return []
+    
+    def _fetch_location_sensors_data(self, location: Dict, start_date: str, end_date: str) -> List[Dict]:
+        """Fetch hourly data for all target sensors at a location"""
+        
+        measurements = []
+        location_name = location.get('name', 'Unknown')
+        coords = location.get('coordinates', {})
+        lat = coords.get('latitude')
+        lon = coords.get('longitude')
+        
+        # Convert dates to ISO format with timezone
+        start_iso = f"{start_date}T00:00:00Z"
+        end_iso = f"{end_date}T23:59:59Z"
+        
+        for sensor in location.get('target_sensors', []):
+            sensor_id = sensor.get('id')
+            param_info = sensor.get('parameter', {})
+            param_name = param_info.get('name', '')
+            
+            if not sensor_id:
+                continue
+                
             try:
+                # Fetch hourly data for this sensor
+                params = {
+                    'datetime_from': start_iso,
+                    'datetime_to': end_iso,
+                    'limit': 500  # Get many hours
+                }
+                
+                headers = {'X-API-Key': self.api_config.OPENAQ_API_KEY} if self.api_config.OPENAQ_API_KEY else {}
+                
                 response = requests.get(
-                    f"{self.api_config.OPENAQ_BASE_URL}/measurements",
+                    f"{self.api_config.OPENAQ_BASE_URL}/sensors/{sensor_id}/hours",
                     params=params,
+                    headers=headers,
                     timeout=30
                 )
-                response.raise_for_status()
+                
+                if response.status_code != 200:
+                    logger.warning(f"   Sensor {sensor_id} ({param_name}) HTTP {response.status_code}")
+                    continue
                 
                 data = response.json()
-                results = data.get('results', [])
+                hourly_results = data.get('results', [])
                 
-                if not results:
-                    break
-                
-                # Extract and standardize data
-                for result in results:
+                # Convert to our format
+                for result in hourly_results:
                     try:
+                        period = result.get('period', {})
+                        datetime_from = period.get('datetimeFrom', {}).get('utc')
+                        
                         measurement = {
-                            'datetime': result['date']['utc'],
-                            'parameter': result['parameter'],
-                            'value': float(result['value']),
-                            'unit': result['unit'],
-                            'latitude': float(result['coordinates']['latitude']),
-                            'longitude': float(result['coordinates']['longitude']),
-                            'location': result['location'],
-                            'city': result.get('city', ''),
-                            'country': result['country'],
-                            'source_name': result.get('sourceName', ''),
-                            'sensor_type': result.get('sensorType', 'reference'),
-                            'data_source': 'OpenAQ'
+                            'datetime': datetime_from,
+                            'parameter': param_name,
+                            'value': float(result.get('value', 0)),
+                            'unit': param_info.get('units', ''),
+                            'latitude': lat,
+                            'longitude': lon,
+                            'location': location_name,
+                            'city': location.get('locality', ''),
+                            'country': location.get('country', {}).get('name', ''),
+                            'source_name': 'OpenAQ_v3',
+                            'sensor_type': 'reference',
+                            'data_source': 'OpenAQ',
+                            'sensor_id': sensor_id
                         }
                         measurements.append(measurement)
                         
                     except (ValueError, KeyError) as e:
-                        # Skip invalid measurements
                         continue
                 
-                # Check pagination
-                meta = data.get('meta', {})
-                if page >= meta.get('pages', 1):
-                    break
-                    
-                page += 1
+                logger.info(f"     {location_name} {param_name}: {len(hourly_results)} hours")
                 
-            except requests.RequestException as e:
-                logger.error(f"❌ API request failed for {parameter}, page {page}: {e}")
-                break
+            except Exception as e:
+                logger.warning(f"   Error fetching sensor {sensor_id}: {e}")
+                continue
+        
+        return measurements
         
         return measurements
     
